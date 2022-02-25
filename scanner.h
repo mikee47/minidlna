@@ -37,6 +37,7 @@
 #define MUSIC_CONTRIB_ARTIST_ID	"1$100"
 #define MUSIC_ALBUM_ARTIST_ID	"1$107"
 #define MUSIC_COMPOSER_ID	"1$108"
+#define MUSIC_AUTHOR_ID	        "1$109"
 #define MUSIC_RATING_ID		"1$101"
 
 #define VIDEO_ID		"2"

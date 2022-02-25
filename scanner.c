@@ -226,7 +226,7 @@ insert_containers(const char *name, const char *path, const char *refID, const c
 	}
 	else if( strstr(class, "audioItem") )
 	{
-		snprintf(sql, sizeof(sql), "SELECT ALBUM, ARTIST, GENRE, ALBUM_ART from DETAILS where ID = %lld", (long long)detailID);
+		snprintf(sql, sizeof(sql), "SELECT ALBUM, ARTIST, GENRE, ALBUM_ART, CREATOR from DETAILS where ID = %lld", (long long)detailID);
 		ret = sql_get_table(db, sql, &result, &row, &cols);
 		if( ret != SQLITE_OK )
 			return;
@@ -235,9 +235,13 @@ insert_containers(const char *name, const char *path, const char *refID, const c
 			sqlite3_free_table(result);
 			return;
 		}
-		char *album = result[4], *artist = result[5], *genre = result[6];
-		char *album_art = result[7];
+		char *album = result[cols+0], *artist = result[cols+1], *genre = result[cols+2];
+		char *album_art = result[cols+3];
+		char *composer = result[cols+4];
 		static struct virtual_item last_album;
+		static struct virtual_item last_composer;
+		static struct virtual_item last_composerAlbum;
+		static struct virtual_item last_composerAlbumAll;
 		static struct virtual_item last_artist;
 		static struct virtual_item last_artistAlbum;
 		static struct virtual_item last_artistAlbumAll;
@@ -267,6 +271,118 @@ insert_containers(const char *name, const char *path, const char *refID, const c
 			             " ('%s$%llX', '%s', '%s', '%s', %lld, %Q)",
 			             last_album.parentID, last_album.objectID, last_album.parentID, refID, class, (long long)detailID, name);
 		}
+		if( composer && genre && strcmp(genre,"Audiobook") == 0)
+		{
+		  //DPRINTF(E_WARN, L_SCANNER, "**** Book = %s Creator = %s\n", album,composer);
+		  if( !valid_cache || strcmp(composer, last_composer.name) != 0 )
+		  {
+		    insert_container
+		      (composer, MUSIC_AUTHOR_ID, NULL, "person.musicAuthor", NULL, genre,
+		       NULL, &objectID, &parentID);
+		    sprintf(last_composer.parentID, MUSIC_AUTHOR_ID"$%llX", (long long)parentID);
+		    strncpyt(last_composer.name, composer, sizeof(last_composer.name));
+		    last_composerAlbum.name[0] = '\0';
+		    /* Add this file to the "-All Albums-" conatiner as well */
+		    insert_container
+		      (_("- All Albums -"), last_composer.parentID, NULL, "album", composer,
+		       genre, NULL, &objectID, &parentID);
+		    sprintf
+		      (last_composerAlbumAll.parentID, "%s$%llX", last_composer.parentID, (long long)parentID);
+		    last_composerAlbumAll.objectID = objectID;
+		  }
+		  else
+		  {
+		    last_composerAlbumAll.objectID++;
+		  }
+		  if( valid_cache && strcmp(album?album:_("Unknown Album"), last_composerAlbum.name) == 0 )
+		  {
+		    last_composerAlbum.objectID++;
+		    //DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Using last artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
+		  }
+		  else
+		  {
+		    insert_container
+		      (album?album:_("Unknown Album"), last_composer.parentID, album?last_album.parentID:NULL,
+		       "album.musicAlbum", composer, genre, album_art, &objectID, &parentID);
+		    sprintf
+		      (last_composerAlbum.parentID, "%s$%llX", last_composer.parentID, (long long)parentID);
+		    last_composerAlbum.objectID = objectID;
+		    strncpyt
+		      (last_composerAlbum.name,
+		       album ? album : _("Unknown Album"), sizeof(last_composerAlbum.name));
+		    //DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Creating cached artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
+		  }
+		  sql_exec
+		    (db, "INSERT into OBJECTS"
+		     " (OBJECT_ID, PARENT_ID, REF_ID, CLASS, DETAIL_ID, NAME) "
+		     "VALUES"
+		     " ('%s$%llX', '%s', '%s', '%s', %lld, %Q)",
+		     last_composerAlbum.parentID, last_composerAlbum.objectID, last_composerAlbum.parentID,
+		     refID, class, (long long)detailID, name);
+		  sql_exec
+		    (db, "INSERT into OBJECTS"
+		     " (OBJECT_ID, PARENT_ID, REF_ID, CLASS, DETAIL_ID, NAME) "
+		     "VALUES"
+		     " ('%s$%llX', '%s', '%s', '%s', %lld, %Q)",
+		     last_composerAlbumAll.parentID, last_composerAlbumAll.objectID,
+		     last_composerAlbumAll.parentID, refID, class, (long long)detailID, name);
+		}
+		if( composer  && genre && strcmp(genre,"Audiobook") != 0)
+		{
+		  //DPRINTF(E_WARN, L_SCANNER, "**** Album = %s Creator = %s\n", album,composer);
+		  if( !valid_cache || strcmp(composer, last_composer.name) != 0 )
+		  {
+		    insert_container
+		      (composer, MUSIC_COMPOSER_ID, NULL, "person.musicComposer", NULL, genre,
+		       NULL, &objectID, &parentID);
+		    sprintf(last_composer.parentID, MUSIC_COMPOSER_ID"$%llX", (long long)parentID);
+		    strncpyt(last_composer.name, composer, sizeof(last_composer.name));
+		    last_composerAlbum.name[0] = '\0';
+		    /* Add this file to the "-All Albums-" conatiner as well */
+		    insert_container
+		      (_("- All Albums -"), last_composer.parentID, NULL, "album", composer,
+		       genre, NULL, &objectID, &parentID);
+		    sprintf
+		      (last_composerAlbumAll.parentID, "%s$%llX", last_composer.parentID, (long long)parentID);
+		    last_composerAlbumAll.objectID = objectID;
+		  }
+		  else
+		  {
+		    last_composerAlbumAll.objectID++;
+		  }
+		  if( valid_cache && strcmp(album?album:_("Unknown Album"), last_composerAlbum.name) == 0 )
+		  {
+		    last_composerAlbum.objectID++;
+		    //DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Using last artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
+		  }
+		  else
+		  {
+		    insert_container
+		      (album?album:_("Unknown Album"), last_composer.parentID, album?last_album.parentID:NULL,
+		       "album.musicAlbum", composer, genre, album_art, &objectID, &parentID);
+		    sprintf
+		      (last_composerAlbum.parentID, "%s$%llX", last_composer.parentID, (long long)parentID);
+		    last_composerAlbum.objectID = objectID;
+		    strncpyt
+		      (last_composerAlbum.name,
+		       album ? album : _("Unknown Album"), sizeof(last_composerAlbum.name));
+		    //DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Creating cached artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
+		  }
+		  sql_exec
+		    (db, "INSERT into OBJECTS"
+		     " (OBJECT_ID, PARENT_ID, REF_ID, CLASS, DETAIL_ID, NAME) "
+		     "VALUES"
+		     " ('%s$%llX', '%s', '%s', '%s', %lld, %Q)",
+		     last_composerAlbum.parentID, last_composerAlbum.objectID, last_composerAlbum.parentID,
+		     refID, class, (long long)detailID, name);
+		  sql_exec
+		    (db, "INSERT into OBJECTS"
+		     " (OBJECT_ID, PARENT_ID, REF_ID, CLASS, DETAIL_ID, NAME) "
+		     "VALUES"
+		     " ('%s$%llX', '%s', '%s', '%s', %lld, %Q)",
+		     last_composerAlbumAll.parentID, last_composerAlbumAll.objectID,
+		     last_composerAlbumAll.parentID, refID, class, (long long)detailID, name);
+		}
 		if( artist )
 		{
 			if( !valid_cache || strcmp(artist, last_artist.name) != 0 )
@@ -285,17 +401,30 @@ insert_containers(const char *name, const char *path, const char *refID, const c
 				last_artistAlbumAll.objectID++;
 			}
 			if( valid_cache && strcmp(album?album:_("Unknown Album"), last_artistAlbum.name) == 0 )
+			  //if( valid_cache && strcmp(composer?composer:_("Unknown Album"), last_artistAlbum.name) == 0 )
 			{
 				last_artistAlbum.objectID++;
 				//DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Using last artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
 			}
 			else
 			{
-				insert_container(album?album:_("Unknown Album"), last_artist.parentID, album?last_album.parentID:NULL,
-				                 "album.musicAlbum", artist, genre, album_art, &objectID, &parentID);
-				sprintf(last_artistAlbum.parentID, "%s$%llX", last_artist.parentID, (long long)parentID);
-				last_artistAlbum.objectID = objectID;
-				strncpyt(last_artistAlbum.name, album ? album : _("Unknown Album"), sizeof(last_artistAlbum.name));
+			  insert_container
+			  (album?album:_("Unknown Album"), last_artist.parentID, album?last_album.parentID:NULL,
+			     "album.musicAlbum", artist, genre, album_art, &objectID, &parentID);
+			  //insert_container
+			  //  (composer?composer:_("Unknown Album"), last_artist.parentID,
+			  //   composer?last_composer.parentID:NULL,
+			  //   "composer.musicAlbum", artist, genre, album_art, &objectID, &parentID);
+			  sprintf(last_artistAlbum.parentID, "%s$%llX", last_artist.parentID, (long long)parentID);
+			  last_artistAlbum.objectID = objectID;
+			  strncpyt
+			    (last_artistAlbum.name,
+			     album ? album : _("Unknown Album"),
+			     sizeof(last_artistAlbum.name));
+			  //strncpyt
+			  //  (last_artistAlbum.name,
+			  //   composer ? composer : _("Unknown Album"),
+			  //   sizeof(last_artistAlbum.name));
 				//DEBUG DPRINTF(E_DEBUG, L_SCANNER, "Creating cached artist/album item: %s/%s/%X\n", last_artist.name, last_artist.parentID, last_artist.objectID);
 			}
 			sql_exec(db, "INSERT into OBJECTS"
@@ -535,6 +664,8 @@ CreateDatabase(void)
 	                    MUSIC_ALL_ID, MUSIC_ID, _("All Music"),
 	                  MUSIC_GENRE_ID, MUSIC_ID, _("Genre"),
 	                 MUSIC_ARTIST_ID, MUSIC_ID, _("Artist"),
+	               MUSIC_COMPOSER_ID, MUSIC_ID, _("Composers"),
+	                 MUSIC_AUTHOR_ID, MUSIC_ID, _("Authors"),
 	                  MUSIC_ALBUM_ID, MUSIC_ID, _("Album"),
 	                    MUSIC_DIR_ID, MUSIC_ID, _("Folders"),
 	                  MUSIC_PLIST_ID, MUSIC_ID, _("Playlists"),

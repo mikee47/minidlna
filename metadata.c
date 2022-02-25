@@ -312,6 +312,7 @@ GetAudioMetadata(const char *path, const char *name)
 	if ( stat(path, &file) != 0 )
 		return 0;
 
+	//	DPRINTF(E_WARN, L_METADATA, "***** path %s!\n", path);
 	if( ends_with(path, ".mp3") )
 	{
 		strcpy(type, "mp3");
@@ -405,25 +406,42 @@ GetAudioMetadata(const char *path, const char *name)
 		m.title = strdup(name);
 		strip_ext(m.title);
 	}
-	for( i = ROLE_START; i < N_ROLE; i++ )
+
+	for( i = ROLE_START; i < ROLE_BAND; i++ )
 	{
 		if( song.contributor[i] && *song.contributor[i] )
 		{
-			m.creator = trim(song.contributor[i]);
-			if( strlen(m.creator) > 48 )
+			m.artist = trim(song.contributor[i]);
+			if( strlen(m.artist) > 48 )
 			{
-				m.creator = strdup("Various Artists");
-				free_flags |= FLAG_CREATOR;
+				m.artist = strdup("Various Artists");
+				//free_flags |= FLAG_CREATOR;
 			}
-			else if( (esc_tag = escape_tag(m.creator, 0)) )
+			else if( (esc_tag = escape_tag(m.artist, 0)) )
 			{
-				m.creator = esc_tag;
-				free_flags |= FLAG_CREATOR;
+				m.artist = esc_tag;
+				//free_flags |= FLAG_CREATOR;
 			}
-			m.artist = m.creator;
+			//m.artist = m.creator;
 			break;
 		}
 	}
+	
+	if( song.contributor[ROLE_COMPOSER] && *song.contributor[ROLE_COMPOSER] )
+	{
+	  //DPRINTF(E_WARN, L_METADATA, "*****composer %s\n",song.contributor[ROLE_COMPOSER]);
+	  free_flags &= ~FLAG_CREATOR;
+	  m.creator = trim(song.contributor[ROLE_COMPOSER]);
+	  if( strlen(m.creator) > 48 )
+	  {
+	    m.creator = strdup("Various Artists");
+	  }
+	  else if( (esc_tag = escape_tag(m.creator, 0)) )
+	  {
+	    m.creator = esc_tag;
+	  }
+	}
+	
 	/* If there is a album artist or band associated with the album,
 	   use it for virtual containers. */
 	if( i < ROLE_ALBUMARTIST )
